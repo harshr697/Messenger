@@ -6,27 +6,13 @@
 //
 
 import SwiftUI
-import Firebase
-import FirebaseStorage
-import FirebaseFirestore
-class FirebaseManager: NSObject{
-    let auth: Auth
-    let storage: Storage
-    let firestore: Firestore
-    static let shared = FirebaseManager()
-    override init() {
-        FirebaseApp.configure()
-        self.auth = Auth.auth()
-        self.storage = Storage.storage()
-        self.firestore = Firestore.firestore()
-        super.init()
-    }
-}
-
 struct ContentView: View {
-    @State var isLoginMode = false
-    @State var emailString = ""
-    @State var password = ""
+    
+    //let didCompleteLoginProcess: () -> ()
+    
+    @State private var isLoginMode = false
+    @State private var emailString = ""
+    @State private var password = ""
     
     @State var shouldShowImagePicker = false
     
@@ -65,7 +51,8 @@ struct ContentView: View {
                                         .foregroundColor(Color(.label))
                                 }
                             }
-                            .overlay(RoundedRectangle(cornerRadius: 64).stroke(Color.black,lineWidth: 3))
+                            .overlay(RoundedRectangle(cornerRadius: 64).stroke(Color(.label),lineWidth: 3))
+                            
                                 //.padding()
                         }
                     }
@@ -74,11 +61,13 @@ struct ContentView: View {
                             .keyboardType(.emailAddress)
                             .textInputAutocapitalization(.none)
                             .padding()
+                            .overlay(Rectangle().stroke(Color(.lightGray),lineWidth: 1))
+                        
                         SecureField("Password", text: $password)
                             .padding()
+                            .overlay(Rectangle().stroke(Color(.lightGray),lineWidth: 1))
                     }
-                    .background(Color.white)
-                    .padding(6)
+                    .padding(4)
                     
                     
                     Button{
@@ -114,6 +103,9 @@ struct ContentView: View {
             }
             
         }
+        .fullScreenCover(isPresented: $loginSuccess){
+            MainMessagesView()
+        }
     }
     private func handleAction(){
         if isLoginMode{
@@ -125,9 +117,8 @@ struct ContentView: View {
         }
     }
     @State var loginStatusMessage = ""
-    
+    @State var loginSuccess = false
     @State var image : UIImage?
-    
     private func loginUser(){
         FirebaseManager.shared.auth.signIn(withEmail: emailString, password: password){
             result, err in
@@ -138,6 +129,10 @@ struct ContentView: View {
             }
             print("Successfully logged in as user: \(result?.user.uid ?? "")")
             loginStatusMessage = "Successfully logged in as user: \(result?.user.uid ?? "")"
+            
+            //self.didCompleteLoginProcess()
+            loginSuccess.toggle()
+            
         }
     }
     
@@ -147,7 +142,10 @@ struct ContentView: View {
         else{return}
         let ref = FirebaseManager.shared.storage.reference(withPath: uid)
         guard let imageData = self.image?.jpegData(compressionQuality: 0.5)
-        else{return}
+        else{
+            storeUserInformation(imageProfileUrl: URL(string: ""))
+            return
+            }
         
                 ref.putData(imageData,metadata: nil){
                     metadata, err in
@@ -162,8 +160,31 @@ struct ContentView: View {
                             return
                         }
                         self.loginStatusMessage = "Successfully stored image with url \(url?.absoluteString ?? "")"
+                        guard let url = url else {return}
+                        storeUserInformation(imageProfileUrl: url)
                     }
                 }
+    }
+    
+    private func storeUserInformation(imageProfileUrl: URL?){
+        
+        guard let uid = FirebaseManager.shared.auth.currentUser?.uid else{
+            return
+        }
+        let userData = ["email": self.emailString, "uid": uid, "profileImageUrl": imageProfileUrl?.absoluteString ?? ""]
+        
+        
+        FirebaseManager.shared.firestore.collection("users")
+            .document(uid).setData(userData) {
+                err in
+                if let err = err {
+                    print(err)
+                    self.loginStatusMessage = "\(err)"
+                    return
+                }
+                print("Success!")
+            }
+        
     }
     
     private func createNewAccount(){
@@ -179,11 +200,14 @@ struct ContentView: View {
             self.loginStatusMessage = "Succressfully created user: \(result?.user.uid ?? "")"
             persistImageToStorage()
         }
+        
     }
+    
 }
 
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
+            //.preferredColorScheme(.dark)
     }
 }
